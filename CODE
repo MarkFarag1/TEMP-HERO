@@ -1,0 +1,178 @@
+
+int stop_distance = 12; 
+
+// Ultrasonic sensor pins
+const int trigPin = 11;
+const int echoPin = 12;
+
+// Motor A (left)
+const int motorA1     = 3;
+const int motorA2     = 4;
+const int motorAspeed = 5;
+
+// Motor B (right)
+const int motorB1     = 7;
+const int motorB2     = 8;
+const int motorBspeed = 9; 
+
+const int L_S = 6;   
+const int S_S = 2;   
+const int R_S = 10;  
+
+-
+int left_sensor_state;
+int s_sensor_state;
+int right_sensor_state;
+long duration;
+int distance;
+
+
+unsigned long phaseStart = 0;
+int phase = 0;
+
+void setup() {
+  pinMode(L_S, INPUT);
+  pinMode(S_S, INPUT);
+  pinMode(R_S, INPUT);
+
+  pinMode(motorA1, OUTPUT);
+  pinMode(motorA2, OUTPUT);
+  pinMode(motorAspeed, OUTPUT);
+  pinMode(motorB1, OUTPUT);
+  pinMode(motorB2, OUTPUT);
+  pinMode(motorBspeed, OUTPUT);
+
+  pinMode(trigPin, OUTPUT);
+  pinMode(echoPin, INPUT);
+
+  Serial.begin(9600);
+
+ 
+  analogWrite(motorAspeed, 180);
+  analogWrite(motorBspeed, 180);
+  delay(3000); // Wait 3 seconds before starting
+}
+
+-
+void loop() {
+  // Measure distance using ultrasonic sensor
+  digitalWrite(trigPin, LOW); delayMicroseconds(2);
+  digitalWrite(trigPin, HIGH); delayMicroseconds(10);
+  digitalWrite(trigPin, LOW);
+  duration = pulseIn(echoPin, HIGH);
+  distance = duration * 0.034 / 2;
+  Serial.print("Distance: "); Serial.println(distance);
+
+ 
+  left_sensor_state  = digitalRead(L_S);
+  s_sensor_state     = digitalRead(S_S);
+  right_sensor_state = digitalRead(R_S);
+
+  
+  if (distance < stop_distance) {
+    avoidObstacle();
+  } 
+  else {
+    // Line following logic (LOW = black, HIGH = white)
+    if (s_sensor_state == LOW && left_sensor_state == HIGH && right_sensor_state == HIGH) forword(); // Centered
+    else if (left_sensor_state == LOW && s_sensor_state == LOW) turnLeft();  // Slight left
+    else if (left_sensor_state == LOW && s_sensor_state == HIGH) turnLeft(); // Hard left
+    else if (right_sensor_state == LOW && s_sensor_state == LOW) turnRight(); // Slight right
+    else if (right_sensor_state == LOW && s_sensor_state == HIGH) turnRight(); // Hard right
+    else forword(); // Keep moving forward even if all sensors detect black (thin line)
+  }
+}
+
+
+void avoidObstacle() {
+  unsigned long now = millis();
+
+  // Update sensors while avoiding
+  left_sensor_state   = digitalRead(L_S);
+  s_sensor_state      = digitalRead(S_S);
+  right_sensor_state  = digitalRead(R_S);
+
+  switch (phase) {
+    case 0: // Reverse slightly
+      digitalWrite(motorA1, HIGH); digitalWrite(motorA2, LOW);
+      digitalWrite(motorB1, LOW);  digitalWrite(motorB2, HIGH);
+      analogWrite(motorAspeed, 170);
+      analogWrite(motorBspeed, 170);
+      phaseStart = now;
+      phase = 1;
+      break;
+
+    case 1: // Wait while reversing
+      if (now - phaseStart > 200) {
+        Stop();
+        phaseStart = now;
+        phase = 2;
+      }
+      break;
+
+    case 2: // Move forward slightly
+      if (now - phaseStart > 100) {
+        digitalWrite(motorA1, HIGH); digitalWrite(motorA2, LOW);
+        digitalWrite(motorB1, HIGH); digitalWrite(motorB2, LOW);
+        analogWrite(motorAspeed, 150);
+        analogWrite(motorBspeed, 150);
+        phaseStart = now;
+        phase = 3;
+      }
+      break;
+
+    case 3: // Turn left
+      if (now - phaseStart > 300) {
+        digitalWrite(motorA1, LOW); digitalWrite(motorA2, HIGH);
+        digitalWrite(motorB1, HIGH); digitalWrite(motorB2, LOW);
+        analogWrite(motorAspeed, 180);
+        analogWrite(motorBspeed, 180);
+        phaseStart = now;
+        phase = 4;
+      }
+      break;
+
+    case 4: // Move forward until line detected
+      digitalWrite(motorA1, HIGH); digitalWrite(motorA2, LOW);
+      digitalWrite(motorB1, HIGH); digitalWrite(motorB2, LOW);
+      analogWrite(motorAspeed, 150);
+      analogWrite(motorBspeed, 150);
+
+      // Resume line following once any sensor sees black
+      if (s_sensor_state == LOW || left_sensor_state == LOW || right_sensor_state == LOW) {
+        phase = 0;
+        Stop();
+      }
+      break;
+  }
+}
+
+
+void forword() {
+  digitalWrite(motorA1, LOW); digitalWrite(motorA2, HIGH);
+  digitalWrite(motorB1, HIGH); digitalWrite(motorB2, LOW);
+  analogWrite(motorAspeed, 180);
+  analogWrite(motorBspeed, 180);
+}
+
+void turnRight() {
+  digitalWrite(motorA1, LOW); digitalWrite(motorA2, LOW);
+  digitalWrite(motorB1, HIGH); digitalWrite(motorB2, LOW);
+  analogWrite(motorAspeed, 120);
+  analogWrite(motorBspeed, 120);
+}
+
+void turnLeft() {
+  digitalWrite(motorA1, LOW); digitalWrite(motorA2, HIGH);
+  digitalWrite(motorB1, LOW); digitalWrite(motorB2, LOW);
+  analogWrite(motorAspeed, 120);
+  analogWrite(motorBspeed, 120);
+}
+
+void Stop() {
+  digitalWrite(motorA1, LOW); digitalWrite(motorA2, LOW);
+  digitalWrite(motorB1, LOW); digitalWrite(motorB2, LOW);
+  analogWrite(motorAspeed, 0);
+  analogWrite(motorBspeed, 0);
+}
+
